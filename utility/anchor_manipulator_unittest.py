@@ -21,12 +21,15 @@ import os
 import tensorflow as tf
 from scipy.misc import imread, imsave, imshow, imresize
 import numpy as np
-import sys; sys.path.insert(0, ".")
+import sys;
+
+sys.path.insert(0, ".")
 from utility import draw_toolbox
 from utility import anchor_manipulator
 from preprocessing import ssd_preprocessing
 
 slim = tf.contrib.slim
+
 
 def save_image_with_bbox(image, labels_, scores_, bboxes_):
     if not hasattr(save_image_with_bbox, "counter"):
@@ -38,6 +41,7 @@ def save_image_with_bbox(image, labels_, scores_, bboxes_):
     img_to_draw = draw_toolbox.bboxes_draw_on_img(img_to_draw, labels_, scores_, bboxes_, thickness=2)
     imsave(os.path.join('./debug/{}.jpg').format(save_image_with_bbox.counter), img_to_draw)
     return save_image_with_bbox.counter
+
 
 def slim_get_split(file_pattern='{}_????'):
     # Features in Pascal VOC TFRecords.
@@ -60,7 +64,7 @@ def slim_get_split(file_pattern='{}_????'):
         'image': slim.tfexample_decoder.Image('image/encoded', 'image/format'),
         'shape': slim.tfexample_decoder.Tensor('image/shape'),
         'object/bbox': slim.tfexample_decoder.BoundingBox(
-                ['ymin', 'xmin', 'ymax', 'xmax'], 'image/object/bbox/'),
+            ['ymin', 'xmin', 'ymax', 'xmax'], 'image/object/bbox/'),
         'object/label': slim.tfexample_decoder.Tensor('image/object/bbox/label'),
         'object/difficult': slim.tfexample_decoder.Tensor('image/object/bbox/difficult'),
         'object/truncated': slim.tfexample_decoder.Tensor('image/object/bbox/truncated'),
@@ -68,35 +72,42 @@ def slim_get_split(file_pattern='{}_????'):
     decoder = slim.tfexample_decoder.TFExampleDecoder(keys_to_features, items_to_handlers)
 
     dataset = slim.dataset.Dataset(
-                data_sources=file_pattern,
-                reader=tf.TFRecordReader,
-                decoder=decoder,
-                num_samples=100,
-                items_to_descriptions=None,
-                num_classes=21,
-                labels_to_names=None)
+        data_sources=file_pattern,
+        reader=tf.TFRecordReader,
+        decoder=decoder,
+        num_samples=100,
+        items_to_descriptions=None,
+        num_classes=21,
+        labels_to_names=None)
 
     with tf.name_scope('dataset_data_provider'):
         provider = slim.dataset_data_provider.DatasetDataProvider(
-                    dataset,
-                    num_readers=2,
-                    common_queue_capacity=32,
-                    common_queue_min=8,
-                    shuffle=True,
-                    num_epochs=1)
+            dataset,
+            num_readers=2,
+            common_queue_capacity=32,
+            common_queue_min=8,
+            shuffle=True,
+            num_epochs=1)
 
     [org_image, shape, glabels_raw, gbboxes_raw, isdifficult] = provider.get(['image', 'shape',
-                                                                         'object/label',
-                                                                         'object/bbox',
-                                                                         'object/difficult'])
-    image, glabels, gbboxes = ssd_preprocessing.preprocess_image(org_image, glabels_raw, gbboxes_raw, [300, 300], is_training=True, data_format='channels_last', output_rgb=True)
+                                                                              'object/label',
+                                                                              'object/bbox',
+                                                                              'object/difficult'])
+    image, glabels, gbboxes = ssd_preprocessing.preprocess_image(org_image, glabels_raw, gbboxes_raw, [300, 300],
+                                                                 is_training=True, data_format='channels_last',
+                                                                 output_rgb=True)
 
     anchor_creator = anchor_manipulator.AnchorCreator([300] * 2,
-                                                    layers_shapes = [(38, 38), (19, 19), (10, 10), (5, 5), (3, 3), (1, 1)],
-                                                    anchor_scales = [(0.1,), (0.2,), (0.375,), (0.55,), (0.725,), (0.9,)],
-                                                    extra_anchor_scales = [(0.1414,), (0.2739,), (0.4541,), (0.6315,), (0.8078,), (0.9836,)],
-                                                    anchor_ratios = [(2., .5), (2., 3., .5, 0.3333), (2., 3., .5, 0.3333), (2., 3., .5, 0.3333), (2., .5), (2., .5)],
-                                                    layer_steps = [8, 16, 32, 64, 100, 300])
+                                                      layers_shapes=[(38, 38), (19, 19), (10, 10), (5, 5), (3, 3),
+                                                                     (1, 1)],
+                                                      anchor_scales=[(0.1,), (0.2,), (0.375,), (0.55,), (0.725,),
+                                                                     (0.9,)],
+                                                      extra_anchor_scales=[(0.1414,), (0.2739,), (0.4541,), (0.6315,),
+                                                                           (0.8078,), (0.9836,)],
+                                                      anchor_ratios=[(2., .5), (2., 3., .5, 0.3333),
+                                                                     (2., 3., .5, 0.3333), (2., 3., .5, 0.3333),
+                                                                     (2., .5), (2., .5)],
+                                                      layer_steps=[8, 16, 32, 64, 100, 300])
 
     all_anchors, all_num_anchors_depth, all_num_anchors_spatial = anchor_creator.get_all_anchors()
 
@@ -105,26 +116,29 @@ def slim_get_split(file_pattern='{}_????'):
         num_anchors_per_layer.append(all_num_anchors_depth[ind] * all_num_anchors_spatial[ind])
 
     anchor_encoder_decoder = anchor_manipulator.AnchorEncoder(allowed_borders=[1.0] * 6,
-                                                        positive_threshold = 0.5,
-                                                        ignore_threshold = 0.5,
-                                                        prior_scaling=[0.1, 0.1, 0.2, 0.2])
+                                                              positive_threshold=0.5,
+                                                              ignore_threshold=0.5,
+                                                              prior_scaling=[0.1, 0.1, 0.2, 0.2])
 
-    gt_targets, gt_labels, gt_scores = anchor_encoder_decoder.encode_all_anchors(glabels, gbboxes, all_anchors, all_num_anchors_depth, all_num_anchors_spatial, True)
+    gt_targets, gt_labels, gt_scores = anchor_encoder_decoder.encode_all_anchors(glabels, gbboxes, all_anchors,
+                                                                                 all_num_anchors_depth,
+                                                                                 all_num_anchors_spatial, True)
 
     anchors = anchor_encoder_decoder._all_anchors
     # split by layers
-    gt_targets, gt_labels, gt_scores, anchors = tf.split(gt_targets, num_anchors_per_layer, axis=0),\
-                                                tf.split(gt_labels, num_anchors_per_layer, axis=0),\
-                                                tf.split(gt_scores, num_anchors_per_layer, axis=0),\
+    gt_targets, gt_labels, gt_scores, anchors = tf.split(gt_targets, num_anchors_per_layer, axis=0), \
+                                                tf.split(gt_labels, num_anchors_per_layer, axis=0), \
+                                                tf.split(gt_scores, num_anchors_per_layer, axis=0), \
                                                 [tf.split(anchor, num_anchors_per_layer, axis=0) for anchor in anchors]
 
     save_image_op = tf.py_func(save_image_with_bbox,
-                            [ssd_preprocessing.unwhiten_image(image),
-                            tf.clip_by_value(tf.concat(gt_labels, axis=0), 0, tf.int64.max),
-                            tf.concat(gt_scores, axis=0),
-                            tf.concat(gt_targets, axis=0)],
-                            tf.int64, stateful=True)
+                               [ssd_preprocessing.unwhiten_image(image),
+                                tf.clip_by_value(tf.concat(gt_labels, axis=0), 0, tf.int64.max),
+                                tf.concat(gt_scores, axis=0),
+                                tf.concat(gt_targets, axis=0)],
+                               tf.int64, stateful=True)
     return save_image_op
+
 
 if __name__ == '__main__':
     save_image_op = slim_get_split('/media/rs/7A0EE8880EE83EAF/Detections/SSD/dataset/tfrecords/train*')

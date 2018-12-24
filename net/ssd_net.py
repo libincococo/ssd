@@ -73,7 +73,7 @@ def forward_module(m, inputs, training=False):
     return m.apply(inputs)
 
 class VGG16Backbone(object):
-    def __init__(self, data_format='channels_first'):
+    def __init__(self, data_format='channels_last'):
         super(VGG16Backbone, self).__init__()
         self._data_format = data_format
         self._bn_axis = -1 if data_format == 'channels_last' else 1
